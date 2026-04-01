@@ -39,6 +39,8 @@ const SUB_TOPICS: Record<string, string[]> = {
 
 const TAB_COLORS = ['#6c63ff','#00d4aa','#ff6b6b','#ffd166','#06d6a0','#118ab2','#ef476f']
 
+const MARCH_30 = new Date('2026-03-30T00:00:00')
+
 function parseDate(raw: string): Date | null {
   if (!raw) return null
   const d = new Date(raw)
@@ -59,6 +61,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
+  const [dateFilter, setDateFilter] = useState<'overall' | 'march30'>('overall')
 
   const load = useCallback(async (url: string) => {
     if (!url) return
@@ -81,7 +84,17 @@ export default function Dashboard() {
     return () => clearInterval(t)
   }, [csvUrl, load])
 
-  const filtered = rows.filter(r => r['User ID'] || r['Tab Clicked'])
+  // Apply date filter
+  const filtered = rows.filter(r => {
+    if (!(r['User ID'] || r['Tab Clicked'])) return false
+    if (dateFilter === 'march30') {
+      const d = parseDate(r['Timestamp'])
+      if (!d) return false
+      return d >= MARCH_30
+    }
+    return true
+  })
+
   const totalEntries = filtered.length
   const uniqueUsers = new Set(filtered.filter(r => r['User ID']).map(r => r['User ID'])).size
 
@@ -108,6 +121,7 @@ export default function Dashboard() {
       .filter(s => s.count > 0).sort((a, b) => b.count - a.count)
   }
 
+  // Super Pass courses
   const courseCounts: Record<string, number> = {}
   filtered.forEach(r => {
     if (r['Tab Clicked'] === 'Super Pass Course Selected' && r['Course Name']) {
@@ -116,6 +130,38 @@ export default function Dashboard() {
     }
   })
   const courseData = Object.entries(courseCounts).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count)
+
+  // Study Plan names from Course Name column (when Tab Clicked = Study Plan Selected)
+  const studyPlanCounts: Record<string, number> = {}
+  filtered.forEach(r => {
+    if (r['Tab Clicked'] === 'Study Plan Selected' && r['Course Name']) {
+      const p = r['Course Name'].trim()
+      studyPlanCounts[p] = (studyPlanCounts[p] || 0) + 1
+    }
+  })
+  const studyPlanData = Object.entries(studyPlanCounts).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count)
+
+  // Top 5 Infographics from Course Name column
+  const infographicCounts: Record<string, number> = {}
+  filtered.forEach(r => {
+    const tab = r['Tab Clicked']
+    if ((tab === 'Infographic Viewed' || tab === 'Info View: Budget 2026-27' || tab === 'Info View: WPL 2026' || tab === 'Image: Budget 2026-27' || tab === 'Viewed Image: Budget 2026-27') && r['Course Name']) {
+      const name = r['Course Name'].trim()
+      infographicCounts[name] = (infographicCounts[name] || 0) + 1
+    }
+  })
+  const infographicData = Object.entries(infographicCounts).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count).slice(0, 5)
+
+  // Top 5 Quant topics from Course Name column
+  const quantTopicCounts: Record<string, number> = {}
+  filtered.forEach(r => {
+    const tab = r['Tab Clicked']
+    if ((tab === 'Quant Topic Viewed' || tab === 'Quant View: SI-CI' || tab === 'Quant View: Statistics' || tab === 'Quant: Average' || tab === 'Quant: Mensuration 2D' || tab === 'Quant: Mensuration 3D' || tab === 'Quant: Profit & Loss' || tab === 'Quant: Statistics' || tab === 'Viewed Quant: Mensuration 2D') && r['Course Name']) {
+      const name = r['Course Name'].trim()
+      quantTopicCounts[name] = (quantTopicCounts[name] || 0) + 1
+    }
+  })
+  const quantTopicData = Object.entries(quantTopicCounts).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count).slice(0, 5)
 
   const dateMap: Record<string, { entries: number; users: Set<string> }> = {}
   filtered.forEach(r => {
@@ -156,6 +202,33 @@ export default function Dashboard() {
           Load
         </button>
       </div>
+
+      {/* Date Filter */}
+      {rows.length > 0 && (
+        <div style={{ background: '#0f1117', borderBottom: '1px solid #2a2f4e', padding: '12px 28px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: '0.82rem', color: '#8892b0' }}>🗓️ Filter:</span>
+          <button
+            onClick={() => setDateFilter('overall')}
+            style={{
+              background: dateFilter === 'overall' ? '#6c63ff' : '#1a1d2e',
+              color: dateFilter === 'overall' ? '#fff' : '#8892b0',
+              border: '1px solid #2a2f4e', borderRadius: 8, padding: '6px 18px',
+              fontWeight: 600, cursor: 'pointer', fontSize: '0.82rem'
+            }}>
+            📊 Overall
+          </button>
+          <button
+            onClick={() => setDateFilter('march30')}
+            style={{
+              background: dateFilter === 'march30' ? '#6c63ff' : '#1a1d2e',
+              color: dateFilter === 'march30' ? '#fff' : '#8892b0',
+              border: '1px solid #2a2f4e', borderRadius: 8, padding: '6px 18px',
+              fontWeight: 600, cursor: 'pointer', fontSize: '0.82rem'
+            }}>
+            📅 30th March 2026 Onwards
+          </button>
+        </div>
+      )}
 
       {error && (
         <div style={{ margin: '16px 28px', background: '#3d1a1a', border: '1px solid #ff6b6b', borderRadius: 10, padding: '12px 16px', color: '#ff6b6b', fontSize: '0.85rem' }}>⚠️ {error}</div>
@@ -304,6 +377,88 @@ export default function Dashboard() {
                       </table>
                     )}
 
+                    {/* Study Plan Names */}
+                    {tab.name === 'Study Plans' && studyPlanData.length > 0 && (
+                      <div style={{ borderTop: '2px solid #2a2f4e' }}>
+                        <div style={{ padding: '10px 16px', color: '#6c63ff', fontWeight: 700, fontSize: '0.85rem', background: '#6c63ff15' }}>
+                          📋 Plans Selected by Users
+                        </div>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1px solid #2a2f4e' }}>
+                              <th style={{ textAlign: 'left', padding: '7px 16px', color: '#8892b0', fontWeight: 600 }}>#</th>
+                              <th style={{ textAlign: 'left', padding: '7px 16px', color: '#8892b0', fontWeight: 600 }}>Plan Name</th>
+                              <th style={{ textAlign: 'right', padding: '7px 16px', color: '#8892b0', fontWeight: 600 }}>Selections</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {studyPlanData.map((p, i) => (
+                              <tr key={p.name} style={{ borderBottom: '1px solid #1e2235', background: i % 2 === 0 ? 'transparent' : '#20243a' }}>
+                                <td style={{ padding: '7px 16px', color: '#8892b0' }}>{i + 1}</td>
+                                <td style={{ padding: '7px 16px', color: '#6c63ff' }}>{p.name}</td>
+                                <td style={{ padding: '7px 16px', textAlign: 'right', fontWeight: 700, color: '#6c63ff' }}>{p.count}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {/* Top 5 Infographics */}
+                    {tab.name === 'Infographics' && infographicData.length > 0 && (
+                      <div style={{ borderTop: '2px solid #2a2f4e' }}>
+                        <div style={{ padding: '10px 16px', color: '#ff6b6b', fontWeight: 700, fontSize: '0.85rem', background: '#ff6b6b15' }}>
+                          🖼️ Top 5 Infographics Viewed
+                        </div>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1px solid #2a2f4e' }}>
+                              <th style={{ textAlign: 'left', padding: '7px 16px', color: '#8892b0', fontWeight: 600 }}>#</th>
+                              <th style={{ textAlign: 'left', padding: '7px 16px', color: '#8892b0', fontWeight: 600 }}>Infographic Name</th>
+                              <th style={{ textAlign: 'right', padding: '7px 16px', color: '#8892b0', fontWeight: 600 }}>Views</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {infographicData.map((inf, i) => (
+                              <tr key={inf.name} style={{ borderBottom: '1px solid #1e2235', background: i % 2 === 0 ? 'transparent' : '#20243a' }}>
+                                <td style={{ padding: '7px 16px', color: '#8892b0' }}>{i + 1}</td>
+                                <td style={{ padding: '7px 16px', color: '#ff6b6b' }}>{inf.name}</td>
+                                <td style={{ padding: '7px 16px', textAlign: 'right', fontWeight: 700, color: '#ff6b6b' }}>{inf.count}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {/* Top 5 Quant Topics */}
+                    {tab.name === 'Quant Formula Sheet' && quantTopicData.length > 0 && (
+                      <div style={{ borderTop: '2px solid #2a2f4e' }}>
+                        <div style={{ padding: '10px 16px', color: '#ffd166', fontWeight: 700, fontSize: '0.85rem', background: '#ffd16615' }}>
+                          🔢 Top 5 Quant Topics Viewed
+                        </div>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1px solid #2a2f4e' }}>
+                              <th style={{ textAlign: 'left', padding: '7px 16px', color: '#8892b0', fontWeight: 600 }}>#</th>
+                              <th style={{ textAlign: 'left', padding: '7px 16px', color: '#8892b0', fontWeight: 600 }}>Topic Name</th>
+                              <th style={{ textAlign: 'right', padding: '7px 16px', color: '#8892b0', fontWeight: 600 }}>Views</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {quantTopicData.map((q, i) => (
+                              <tr key={q.name} style={{ borderBottom: '1px solid #1e2235', background: i % 2 === 0 ? 'transparent' : '#20243a' }}>
+                                <td style={{ padding: '7px 16px', color: '#8892b0' }}>{i + 1}</td>
+                                <td style={{ padding: '7px 16px', color: '#ffd166' }}>{q.name}</td>
+                                <td style={{ padding: '7px 16px', textAlign: 'right', fontWeight: 700, color: '#ffd166' }}>{q.count}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {/* Super Pass Courses */}
                     {tab.name === 'Super Pass' && courseData.length > 0 && (
                       <div style={{ borderTop: '2px solid #2a2f4e' }}>
                         <div style={{ padding: '10px 16px', color: '#ffd166', fontWeight: 700, fontSize: '0.85rem', background: '#ffd16615' }}>
