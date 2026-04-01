@@ -64,7 +64,7 @@ export default function Dashboard() {
     if (!url) return
     setLoading(true); setError('')
     try {
-      const res = await fetch(url)
+      const res = await fetch(`${url}&t=${Date.now()}`)
       const text = await res.text()
       const parsed = Papa.parse<UserRow>(text, { header: true, skipEmptyLines: true })
       setRows(parsed.data)
