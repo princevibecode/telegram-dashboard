@@ -54,6 +54,8 @@ function fmt(d: Date) {
 const statusLabel = (clicks: number) =>
   clicks > 500 ? '🔥 High' : clicks > 100 ? '✅ Medium' : '⚠️ Low'
 
+const AI_DOUBT_TABS = ['AI_DOUBT_QUERY', 'AI_DOUBT_QUERY_IMAGE']
+
 export default function Dashboard() {
   const [csvUrl, setCsvUrl] = useState(process.env.NEXT_PUBLIC_SHEET_CSV_URL || '')
   const [inputUrl, setInputUrl] = useState(process.env.NEXT_PUBLIC_SHEET_CSV_URL || '')
@@ -62,6 +64,8 @@ export default function Dashboard() {
   const [error, setError] = useState('')
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   const [dateFilter, setDateFilter] = useState<'overall' | 'march30'>('overall')
+  const [feedbackDays, setFeedbackDays] = useState<7 | 15 | 30>(7)
+  const [copied, setCopied] = useState(false)
 
   const load = useCallback(async (url: string) => {
     if (!url) return
@@ -174,6 +178,28 @@ export default function Dashboard() {
   })
   const dateChartData = Object.entries(dateMap).sort(([a], [b]) => a.localeCompare(b))
     .map(([date, v]) => ({ date: fmt(new Date(date)), entries: v.entries, users: v.users.size }))
+
+  // General Feedback — filtered by last N days, excluding AI doubt queries
+  const now = new Date()
+  const feedbackCutoff = new Date(now)
+  feedbackCutoff.setDate(now.getDate() - feedbackDays)
+
+  const generalFeedbacks = rows.filter(r => {
+    const fb = r['General Feedback']?.trim()
+    if (!fb) return false
+    if (AI_DOUBT_TABS.includes(r['Tab Clicked'])) return false
+    const d = parseDate(r['Timestamp'])
+    if (!d) return false
+    return d >= feedbackCutoff
+  }).map(r => r['General Feedback'].trim())
+
+  const handleCopyFeedback = () => {
+    const text = generalFeedbacks.join('\n\n')
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
 
   const card = { background: '#1a1d2e', border: '1px solid #2a2f4e', borderRadius: 14, padding: 20 } as const
   const ttStyle = { contentStyle: { background: '#20243a', border: '1px solid #2a2f4e', borderRadius: 8, color: '#e8eaf6' } }
@@ -487,6 +513,69 @@ export default function Dashboard() {
                   </div>
                 )
               })}
+            </div>
+          </div>
+
+          {/* ── General Feedback Section ── */}
+          <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
+            {/* Header */}
+            <div style={{ background: '#06d6a022', borderBottom: '1px solid #2a2f4e', padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+              <div>
+                <span style={{ fontWeight: 700, color: '#06d6a0', fontSize: '0.95rem' }}>💬 General Feedback</span>
+                <span style={{ marginLeft: 12, background: '#06d6a0', color: '#0f1117', borderRadius: 20, padding: '2px 12px', fontSize: '0.8rem', fontWeight: 700 }}>
+                  {generalFeedbacks.length} responses
+                </span>
+              </div>
+              {/* Day filter buttons */}
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                {([7, 15, 30] as const).map(d => (
+                  <button key={d} onClick={() => setFeedbackDays(d)}
+                    style={{
+                      background: feedbackDays === d ? '#06d6a0' : '#1a1d2e',
+                      color: feedbackDays === d ? '#0f1117' : '#8892b0',
+                      border: '1px solid #2a2f4e', borderRadius: 8,
+                      padding: '5px 14px', fontWeight: 700, cursor: 'pointer', fontSize: '0.8rem'
+                    }}>
+                    Last {d}d
+                  </button>
+                ))}
+                <button onClick={handleCopyFeedback} disabled={generalFeedbacks.length === 0}
+                  style={{
+                    background: copied ? '#00d4aa' : '#2a2f4e',
+                    color: copied ? '#0f1117' : '#e8eaf6',
+                    border: '1px solid #2a2f4e', borderRadius: 8,
+                    padding: '5px 14px', fontWeight: 700, cursor: 'pointer', fontSize: '0.8rem',
+                    transition: 'all 0.2s', opacity: generalFeedbacks.length === 0 ? 0.5 : 1
+                  }}>
+                  {copied ? '✅ Copied!' : '📋 Copy All'}
+                </button>
+              </div>
+            </div>
+
+            {/* Feedback list */}
+            {generalFeedbacks.length === 0 ? (
+              <div style={{ padding: '24px 20px', color: '#8892b0', fontSize: '0.85rem', textAlign: 'center' }}>
+                No general feedback found for the last {feedbackDays} days.
+              </div>
+            ) : (
+              <div style={{ maxHeight: 420, overflowY: 'auto', padding: '12px 0' }}>
+                {generalFeedbacks.map((fb, i) => (
+                  <div key={i} style={{
+                    padding: '10px 20px',
+                    borderBottom: '1px solid #1e2235',
+                    background: i % 2 === 0 ? 'transparent' : '#20243a',
+                    display: 'flex', gap: 12, alignItems: 'flex-start'
+                  }}>
+                    <span style={{ color: '#8892b0', fontSize: '0.78rem', minWidth: 24, paddingTop: 2 }}>{i + 1}.</span>
+                    <span style={{ fontSize: '0.85rem', lineHeight: 1.6, color: '#e8eaf6' }}>{fb}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Tip */}
+            <div style={{ padding: '10px 20px', borderTop: '1px solid #2a2f4e', background: '#0f1117', fontSize: '0.75rem', color: '#8892b0' }}>
+              💡 Tip: Click <strong style={{ color: '#00d4aa' }}>Copy All</strong> to copy all feedbacks, then paste in ChatGPT or Claude for a summary.
             </div>
           </div>
 
